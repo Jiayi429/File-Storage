@@ -38,7 +38,7 @@ def upload():
 		s['name'] = os.path.splitext(filename)[0]
 		s['path'] = os.path.join(os.getcwd(),"uploaded")
 		s['extension'] = os.path.splitext(filename)[1]
-		s['size'] = os.stat(file_path).st_size+"bytes"
+		s['size'] = str(os.stat(file_path).st_size)+" bytes"
 		s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
 		s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
 		#res.append(s)
