@@ -29,7 +29,7 @@ def upload():
 				os.remove(uploaded_files[i])
 	"""
 	filenames = []
-	#res = []
+	res = []
 	
 	for file in uploaded_files:
 		flag = 1
@@ -40,9 +40,9 @@ def upload():
 			file.save(file_path)
 			file_hash = getHash(file_path)
 
-
 			if mongo.db.files.find_one({'hash':file_hash}):
 				flag = 0
+				res.append(file_hash)
 				os.remove(file_path)
 
 			if flag:
@@ -55,13 +55,14 @@ def upload():
 				s['size'] = str(os.stat(file_path).st_size)+" bytes"
 				s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
 				s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
-			#res.append(s)
+				res.append(filename,s)
 		#print(s)
 	#json.dumps(res,indent=4,separators=(',',':'))
 				mongo.db.files.insert_one(s)
 				shutil.move(file_path,desDir)
+	#mongo.db.files.insert_many(res)
+	return render_template('upload.html', filenames = filenames, listlen = len(filenames),hashvals = res)
 
-	return render_template('upload.html', filenames = filenames)
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
