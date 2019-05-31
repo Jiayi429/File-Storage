@@ -10,7 +10,7 @@ from flask import Flask, render_template, redirect, url_for, request, send_from_
 from flask_pymongo import PyMongo
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = os.path.dirname(__file__)
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__),"uploaded")
 app.config['MONGO_URI'] = "mongodb://localhost:27017/filestorage"
 mongo = PyMongo(app)
 
@@ -21,30 +21,42 @@ def index():
 @app.route('/upload', methods = ['GET','POST'])
 def upload():
 	uploaded_files = request.files.getlist("file[]")
+	"""
 	for i in range(0,len(uploaded_files)-1):
 		for j in range(i,len(uploaded_files)):
-			if not filecmp.cmpfiles(uploaded_files[i],uploaded_files[j],shallow=True):
+			if filecmp.cmp(uploaded_files[i],uploaded_files[j],shallow=True):
 				os.remove(uploaded_files[i])
-
+	"""
 	filenames = []
 	#res = []
 	for file in uploaded_files:
+		flag = 1
 		filename = secure_filename(file.filename)
-		file.save(os.path.join(app.config['UPLOAD_FOLDER'],"uploaded",filename))
-		filenames.append(filename)
-		file_path = os.path.join(os.getcwd(),"uploaded",filename)
-		s = {}
-		s['hash'] = getHash(file_path)
-		s['name'] = os.path.splitext(filename)[0]
-		s['path'] = os.path.join(os.getcwd(),"uploaded")
-		s['extension'] = os.path.splitext(filename)[1]
-		s['size'] = str(os.stat(file_path).st_size)+" bytes"
-		s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
-		s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
-		#res.append(s)
-		print(s)
+		file_path = os.path.join(app.config['UPLOAD_FOLDER'],filename)
+		if not os.path.exists(file_path):
+			file.save(file_path)
+			file_hash = getHash(file_path)
+			print(file_hash)
+
+			if mongo.db.files.find_one({'hash':file_hash}):
+				flag = 0
+				os.remove(file_path)
+
+			if flag:
+				filenames.append(filename)
+				s = {}
+				s['hash'] = file_hash
+				s['name'] = os.path.splitext(filename)[0]
+				s['path'] = file_path
+				s['extension'] = os.path.splitext(filename)[1]
+				s['size'] = str(os.stat(file_path).st_size)+" bytes"
+				s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
+				s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
+			#res.append(s)
+		#print(s)
 	#json.dumps(res,indent=4,separators=(',',':'))
-		mongo.db.files.insert_one(s)
+				mongo.db.files.insert_one(s)
+
 	return render_template('upload.html', filenames = filenames)
 
 @app.route('/uploads/<filename>')
