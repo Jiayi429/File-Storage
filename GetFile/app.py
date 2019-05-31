@@ -3,6 +3,7 @@ import time
 import hashlib
 import json
 import mongo
+import shutil
 import filecmp
 
 from werkzeug.utils import secure_filename
@@ -29,14 +30,16 @@ def upload():
 	"""
 	filenames = []
 	#res = []
+	
 	for file in uploaded_files:
 		flag = 1
 		filename = secure_filename(file.filename)
-		file_path = os.path.join(app.config['UPLOAD_FOLDER'],filename)
-		if not os.path.exists(file_path):
+		file_path = os.path.join(os.path.dirname(__file__),"temp",filename)
+		desDir = os.path.join(app.config['UPLOAD_FOLDER'],filename)
+		if not os.path.exists(desDir):
 			file.save(file_path)
 			file_hash = getHash(file_path)
-			print(file_hash)
+
 
 			if mongo.db.files.find_one({'hash':file_hash}):
 				flag = 0
@@ -56,6 +59,7 @@ def upload():
 		#print(s)
 	#json.dumps(res,indent=4,separators=(',',':'))
 				mongo.db.files.insert_one(s)
+				shutil.move(file_path,desDir)
 
 	return render_template('upload.html', filenames = filenames)
 
