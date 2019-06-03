@@ -1,0 +1,32 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>File Storage</title>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h3 class="text-muted">Uploaded files</h3>
+		</div>
+		<hr/>
+		<div>
+			{% if listlen > 1: %}
+			This is a list of files you just uploaded
+			<ul>
+				{% for file in filenames %}
+				<li><a href="{{url_for('uploaded_file',filename=file)}}">{{file}}</a></li>
+				{% endfor%}
+			</ul>
+			{% else: %}
+				Duplicates found. Matching hashes below
+				<ul>
+					{% for h in hashvals %}
+					<li>{{h.sha256}}</li>
+					{% endfor %}
+				</ul>
+			{% endif %}
+		</div>
+</body>
+</html>
