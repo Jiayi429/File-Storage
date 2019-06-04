@@ -5,6 +5,7 @@ import json
 import mongo
 import shutil
 import filecmp
+import pagination
 
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, redirect, url_for, request, send_from_directory
@@ -70,20 +71,19 @@ def upload():
 def uploaded_file(filename):
 	return send_from_directory(app.config['UPLOAD_FOLDER'],filename)
 
-"""
-@app.route('/uploaded/<filename>/encrypt')
-def encrypted_file(filename):
-	key = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
-	infile_path = os.path.join(app.config['UPLOAD_FOLDER'],filename)
-	encrypt_file(key, infile_path)
-	return send_from_directory(app.config['ENCRYPT_FOLDER'],filename)
-"""
-
 @app.route('/explorer', methods = ['GET','POST'])
 #TODO: display all uploaded files and hashes256 with decrypt button
 #	   display filenames by pagination
 def explor_files():
 
+	names = list(mongo.db.files.find({name:1}))
+	hashes = list(mongo.db.files.find({hash:1}).sha256)
+	pager_obj = pagination(request.args.get("page",1),len(names),request.path,request.args,per_page_count = 10)
+	name_list = names[pager_obj.start:pager_obj.end]
+	hash_list = hashes[pager_obj.start:pager_obj.end]
+	html = pager_obj.page_html()
+
+	return render_template('explor.html',names = name_list, hashes = hash_list)
 
 
 #return the hash value of file
