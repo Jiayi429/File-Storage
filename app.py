@@ -5,13 +5,14 @@ import json
 import mongo
 import shutil
 import filecmp
-import pagination
+
+from pagination import Pagination
 
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, redirect, url_for, request, send_from_directory
 from flask_pymongo import PyMongo
 from Crypto.Cipher import AES
-from falsk_cors import CORS
+from flask_cors import CORS
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__),"uploaded")
@@ -19,6 +20,7 @@ app.config['ENCRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"encrypted
 app.config['MONGO_URI'] = "mongodb://localhost:27017/filestorage"
 mongo = PyMongo(app)
 CORS(app)
+key = 'keyskeyskeyskeys'
 
 @app.route('/')
 def index():
@@ -49,10 +51,18 @@ def upload():
 				filenames.append(filename)
 				s = {}
 				s['hash'] = file_hash
-				s['name'] = os.path.splitext(filename)[0]
-				s['path'] = file_path
+
+				name = os.path.splitext(filename)[0]
+				s['name'] = name
+
+				p = desDir
+				s['path'] = p
+
 				s['extension'] = os.path.splitext(filename)[1]
-				s['size'] = str(os.stat(file_path).st_size)+" bytes"
+
+				filesize = os.stat(file_path).st_size
+				s['size'] = str(filesize)+" bytes"
+
 				s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
 				s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
 				#res.append(filename,s)
@@ -60,9 +70,7 @@ def upload():
 	#json.dumps(res,indent=4,separators=(',',':'))
 				mongo.db.files.insert_one(s)
 				shutil.move(file_path,desDir)
-				key = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
-				encrypt_file(key, file_path)
-	#mongo.db.files.insert_many(res)
+				encrypt_file(key, name,filesize,p)
 
 	return render_template('upload.html', filenames = filenames, listlen = len(filenames),hashvals = res)
 
@@ -77,13 +85,20 @@ def uploaded_file(filename):
 def explor_files():
 
 	names = list(mongo.db.files.find({name:1}))
-	hashes = list(mongo.db.files.find({hash:1}).sha256)
+	hashes = list(mongo.db.files.find({hash:1}))[0]
 	pager_obj = pagination(request.args.get("page",1),len(names),request.path,request.args,per_page_count = 10)
 	name_list = names[pager_obj.start:pager_obj.end]
 	hash_list = hashes[pager_obj.start:pager_obj.end]
 	html = pager_obj.page_html()
 
-	return render_template('explor.html',names = name_list, hashes = hash_list)
+	return render_template('explor.html',names = name_list, hashes = hash_list, items = len(name_list))
+"""
+@app.route('/decrypted', methods = ['GET','POST'])
+def decrypted():
+	if request.method == 'POST':
+		if request.form['Decrypted'] == 'decrypte':
+			decrypt_file(key, file)
+"""
 
 
 #return the hash value of file
@@ -110,19 +125,21 @@ def getHash(filepath):
 	hashvalue['md5'] = h5.hexdigest()
 	return hashvalue
 
-def encrypt_file(key, in_file, out_file=None, chunksize = 64*1024):
-	#get the sha256 value from mongodb to name outfile
-	fn = mongo.db.files.find({'name':in_file},{hash:1}).sha256
+def encrypt_file(key, in_file,size,path):
 
-	if not out_file:
-		out_file = fn + '.enc'
+	chunksize = 64*1024
+	#get the sha256 value from mongodb to name outfile
+
+	fn = mongo.db.files.find_one({'name':in_file},{'hash':1})['hash']['sha256']
+	out_file = str(fn) + '.enc'
 
 	iv = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
 	encryptor = AES.new(key,AES.MODE_CBC,iv)
-	filesize = os.path.getsize(in_file)
+	filesize = size
+	out_path = os.path.join(app.config['ENCRYPT_FOLDER'],out_file)
 
-	with open(in_file,'rb') as infile:
-		with open(out_file,'wb') as outfile:
+	with open(path,'rb') as infile:
+		with open(out_path,'wb') as outfile:
 			outfile.write(struct.pack('<Q',filesize))
 			outfile.write(iv)
 
@@ -133,7 +150,6 @@ def encrypt_file(key, in_file, out_file=None, chunksize = 64*1024):
 				elif len(chunk) % 16 != 0:
 					chunk += ' ' * (16 - len(chunk)%16)
 				outfile.write(encryptor.encrypt(chunk))
-	outfile.save(os.path.join(app.config['ENCRYPT_FOLDER'],out_file))
 
 def decrypt_file(key, in_file, out_file=None, chunksize=24*1024):
 	if not out_file:
