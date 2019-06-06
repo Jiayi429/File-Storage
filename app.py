@@ -6,8 +6,6 @@ import mongo
 import shutil
 import filecmp
 
-from pagination import Pagination
-
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, redirect, url_for, request, send_from_directory
 from flask_pymongo import PyMongo
@@ -17,6 +15,8 @@ from flask_cors import CORS
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__),"uploaded")
 app.config['ENCRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"encrypted")
+app.config['DECRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"decrypted")
+
 app.config['MONGO_URI'] = "mongodb://localhost:27017/filestorage"
 mongo = PyMongo(app)
 CORS(app)
@@ -50,29 +50,21 @@ def upload():
 			if flag:
 				filenames.append(filename)
 				s = {}
-				s['hash'] = file_hash
-
-				name = os.path.splitext(filename)[0]
-				s['name'] = name
-
-				p = desDir
-				s['path'] = p
-
-				s['extension'] = os.path.splitext(filename)[1]
-
 				filesize = os.stat(file_path).st_size
+				s['hash'] = file_hash
+				s['name'] = os.path.splitext(filename)[0]
+				s['path'] = desDir
+				s['extension'] = os.path.splitext(filename)[1]
 				s['size'] = str(filesize)+" bytes"
-
 				s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
 				s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
-				#res.append(filename,s)
-		#print(s)
-	#json.dumps(res,indent=4,separators=(',',':'))
+
 				mongo.db.files.insert_one(s)
 				shutil.move(file_path,desDir)
-				encrypt_file(key, name,filesize,p)
+				encrypt_file(key,s['hash']['sha256'],filesize,desDir)
+	count = len(list(mongo.db.files.find()))
 
-	return render_template('upload.html', filenames = filenames, listlen = len(filenames),hashvals = res)
+	return render_template('upload.html', filenames = filenames, listlen = len(filenames),hashvals = res,count= count)
 
 
 @app.route('/uploads/<filename>')
@@ -80,25 +72,76 @@ def uploaded_file(filename):
 	return send_from_directory(app.config['UPLOAD_FOLDER'],filename)
 
 @app.route('/explorer', methods = ['GET','POST'])
-#TODO: display all uploaded files and hashes256 with decrypt button
-#	   display filenames by pagination
+
 def explor_files():
+	#while total_count > 10:
+	docs = mongo.db.files.find().limit(10)
 
-	names = list(mongo.db.files.find({name:1}))
-	hashes = list(mongo.db.files.find({hash:1}))[0]
-	pager_obj = pagination(request.args.get("page",1),len(names),request.path,request.args,per_page_count = 10)
-	name_list = names[pager_obj.start:pager_obj.end]
-	hash_list = hashes[pager_obj.start:pager_obj.end]
-	html = pager_obj.page_html()
+	name_list = []
+	hash_list = []
+	for doc in list(docs):
+		name_list.append(doc['name'])
+		hash_list.append(doc['hash']['sha256'])
 
-	return render_template('explor.html',names = name_list, hashes = hash_list, items = len(name_list))
-"""
+	return render_template('explor.html',name = name_list, hash = hash_list, items = len(name_list))
+
 @app.route('/decrypted', methods = ['GET','POST'])
 def decrypted():
-	if request.method == 'POST':
-		if request.form['Decrypted'] == 'decrypte':
-			decrypt_file(key, file)
-"""
+	if request.method == 'GET':
+		file_hash = request.args.get('file_hash')
+
+
+		fn = mongo.db.files.find_one({'sha256':file_hash},{'name':1})
+
+		ext = mongo.db.files.find_one({'sha256':file_hash},{'extension':1})
+		des_file = str(file_hash) + '.enc'
+		des_path = os.path.join(app.config['ENCRYPT_FOLDER'],des_file)
+		
+		out_file = str(fn['name'])+'.'+str(ext['extension'])
+		out_path = out_path = os.path.join(app.config['DECRYPT_FOLDER'],out_file)
+		decrypt_file(key, des_path,out_path)
+
+		return send_from_directory(app.config['DECRYPT_FOLDER'],out_file, as_attachment=True)
+
+def encrypt_file(key,file_hash,size,path):
+	chunksize = 64*1024
+	out_file = str(file_hash) + '.enc'
+	iv = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
+	encryptor = AES.new(key,AES.MODE_CBC,iv)
+	filesize = size
+	out_path = os.path.join(app.config['ENCRYPT_FOLDER'],out_file)
+
+	with open(path,'rb') as infile:
+		with open(out_path,'wb') as outfile:
+			outfile.write(struct.pack('<Q',filesize))
+			outfile.write(iv)
+
+			while True:
+				chunk = infile.read(chunksize)
+				if len(chunk) == 0:
+					break
+				elif len(chunk) % 16 != 0:
+					chunk += ' ' * (16 - len(chunk)%16)
+				outfile.write(encryptor.encrypt(chunk))
+
+def decrypt_file(key,in_path,out_path):
+
+	chunksize=24*1024
+	#out_file = in_file+'dec'
+	#out_path = out_path = os.path.join(app.config['DECRYPT_FOLDER'],out_file)
+
+	with open(in_path,'rb') as infile:
+		origsize = struct.unpack('<Q', infile.read(struct.calcsize('Q')))[0]
+		iv = infile.read(16)
+		decryptor = AES.new(key,AES.MODE_CBC,iv)
+
+		with open(out_path,'wb') as outfile:
+			while True:
+				chunk = infile.read(chunksize)
+				if len(chunk) == 0:
+					break
+				outfile.write(decryptor.decrypt(chunk))
+			outfile.truncate(origsize)
 
 
 #return the hash value of file
@@ -125,47 +168,6 @@ def getHash(filepath):
 	hashvalue['md5'] = h5.hexdigest()
 	return hashvalue
 
-def encrypt_file(key, in_file,size,path):
-
-	chunksize = 64*1024
-	#get the sha256 value from mongodb to name outfile
-
-	fn = mongo.db.files.find_one({'name':in_file},{'hash':1})['hash']['sha256']
-	out_file = str(fn) + '.enc'
-
-	iv = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
-	encryptor = AES.new(key,AES.MODE_CBC,iv)
-	filesize = size
-	out_path = os.path.join(app.config['ENCRYPT_FOLDER'],out_file)
-
-	with open(path,'rb') as infile:
-		with open(out_path,'wb') as outfile:
-			outfile.write(struct.pack('<Q',filesize))
-			outfile.write(iv)
-
-			while True:
-				chunk = infile.read(chunksize)
-				if len(chunk) == 0:
-					break
-				elif len(chunk) % 16 != 0:
-					chunk += ' ' * (16 - len(chunk)%16)
-				outfile.write(encryptor.encrypt(chunk))
-
-def decrypt_file(key, in_file, out_file=None, chunksize=24*1024):
-	if not out_file:
-		out_file = in_file+'dec'
-	with open(in_file,'rb') as infile:
-		origsize = struct.unpack('<Q', infile.read(struct.calcsize('Q')))[0]
-		iv = infile.read(16)
-		decryptor = AES.new(key,AES.MODE_CBC,iv)
-
-		with open(out_file,'wb') as outfile:
-			while True:
-				chunk = infile.read(chunksize)
-				if len(chunk) == 0:
-					break
-				outfile.write(decryptor.decrypt(chunk))
-			outfile.truncate(origsize)
 
 if __name__ == '__main__':
 	app.run(debug = True)
