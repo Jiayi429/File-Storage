@@ -20,15 +20,27 @@
 				<tr>
 					<td align="center">{{name[i]}}</td>
 					<td align="center">{{hash[i]}}</td>
-					<td align="left">
+					<td align="center">
 						<a href="{{url_for('decrypted',file_hash = hash[i])}}">{{'DECRYPT'}}</a>
 					</td>
 				</tr>
 			{% endfor %}
-			<tr>
-				<th align="center"><a href="{{url_for('explor_files',curpage = current_page - 1 )}}">Previous</th>
-				<th align ="center">Current</th>
-				<th align="center"><a href="{{url_for('explor_files',curpage = current_page + 1 )}}">Next</th>
+			<tr style="width: 100%;">
+				{% if max_page == 1:%}
+				{% elif current_page > 1:%}
+					<th align="center"><a href="{{url_for('explor_files',curpage = current_page - 1 )}}">Previous</th>
+					<th></th>
+				{% else: %}
+					<th></th>
+					<th></th>
+				{% endif %}
+
+				{% if current_page < max_page: %}
+					<th align="center"><a href="{{url_for('explor_files',curpage = current_page + 1 )}}">Next</th>
+				{% elif current_page == max_page: %}
+				{% else: %}
+				{% endif %}
+
 			</tr>
 		</table>
 	</div>
