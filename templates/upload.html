@@ -12,12 +12,11 @@
 		</div>
 		<hr/>
 		<div>
-			{% if listlen > 1: %}
+			{% if listlen >= 1: %}
 			This is a list of files you just uploaded
 			<ul>
 				{% for file in filenames %}
 				<li><a href="{{url_for('uploaded_file',filename=file)}}">{{file}}</a></li>
-				<li><a href = "{{url_for('encrypted_file',filename = file)}}">{{file}}</a></li>
 				{% endfor%}
 			</ul>
 			{% else: %}
@@ -28,6 +27,7 @@
 					{% endfor %}
 				</ul>
 			{% endif %}
+			<a href="{{url_for('explor_files', curpage = current_page)}}">{{"explore files"}}</a>
 		</div>
 </body>
 </html>

@@ -10,14 +10,17 @@ from werkzeug.utils import secure_filename
 from flask import Flask, render_template, redirect, url_for, request, send_from_directory
 from flask_pymongo import PyMongo
 from Crypto.Cipher import AES
-from falsk_cors import CORS
+from flask_cors import CORS
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__),"uploaded")
 app.config['ENCRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"encrypted")
+app.config['DECRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"decrypted")
+
 app.config['MONGO_URI'] = "mongodb://localhost:27017/filestorage"
 mongo = PyMongo(app)
 CORS(app)
+key = 'keyskeyskeyskeys'
 
 @app.route('/')
 def index():
@@ -25,65 +28,130 @@ def index():
 
 @app.route('/upload', methods = ['GET','POST'])
 def upload():
-	uploaded_files = request.files.getlist("file[]")
+	if request.method == 'POST':
+		uploaded_files = request.files.getlist("file[]")
 
-	filenames = []
-	res = []
-	
-	for file in uploaded_files:
-		flag = 1
-		filename = secure_filename(file.filename)
-		file_path = os.path.join(os.path.dirname(__file__),"temp",filename)
-		desDir = os.path.join(app.config['UPLOAD_FOLDER'],filename)
-		if not os.path.exists(desDir):
-			file.save(file_path)
-			file_hash = getHash(file_path)
+		filenames = []
+		res = []
+		
+		for file in uploaded_files:
+			flag = 1
+			filename = secure_filename(file.filename)
+			file_path = os.path.join(os.path.dirname(__file__),"temp",filename)
+			desDir = os.path.join(app.config['UPLOAD_FOLDER'],filename)
+			if not os.path.exists(desDir):
+				file.save(file_path)
+				file_hash = getHash(file_path)
 
-			if mongo.db.files.find_one({'hash':file_hash}):
-				flag = 0
-				res.append(file_hash)
-				os.remove(file_path)
+				if mongo.db.files.find_one({'hash':file_hash}):
+					flag = 0
+					res.append(file_hash)
+					os.remove(file_path)
 
-			if flag:
-				filenames.append(filename)
-				s = {}
-				s['hash'] = file_hash
-				s['name'] = os.path.splitext(filename)[0]
-				s['path'] = file_path
-				s['extension'] = os.path.splitext(filename)[1]
-				s['size'] = str(os.stat(file_path).st_size)+" bytes"
-				s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
-				s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
-				#res.append(filename,s)
-		#print(s)
-	#json.dumps(res,indent=4,separators=(',',':'))
-				mongo.db.files.insert_one(s)
-				shutil.move(file_path,desDir)
-				key = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
-				encrypt_file(key, file_path)
-	#mongo.db.files.insert_many(res)
+				if flag:
+					filenames.append(filename)
+					s = {}
+					filesize = os.stat(file_path).st_size
+					s['hash'] = file_hash
+					s['name'] = os.path.splitext(filename)[0]
+					s['path'] = desDir
+					s['extension'] = os.path.splitext(filename)[1]
+					s['size'] = str(filesize)+" bytes"
+					s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
+					s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
 
-	return render_template('upload.html', filenames = filenames, listlen = len(filenames),hashvals = res)
+					mongo.db.files.insert_one(s)
+					shutil.move(file_path,desDir)
+					encrypt_file(key,s['hash']['sha256'],filesize,desDir)
+
+		return render_template('upload.html', filenames = filenames, 
+			listlen = len(filenames),hashvals = res,current_page = 1)
 
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
 	return send_from_directory(app.config['UPLOAD_FOLDER'],filename)
 
-"""
-@app.route('/uploaded/<filename>/encrypt')
-def encrypted_file(filename):
-	key = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
-	infile_path = os.path.join(app.config['UPLOAD_FOLDER'],filename)
-	encrypt_file(key, infile_path)
-	return send_from_directory(app.config['ENCRYPT_FOLDER'],filename)
-"""
-
 @app.route('/explorer', methods = ['GET','POST'])
-#TODO: display all uploaded files and hashes256 with decrypt button
-#	   display filenames by pagination
-def explor_files():
 
+def explor_files():
+	count = len(list(mongo.db.files.find()))
+	page = count//10 + 1 if count%10>0 else count//10
+	docs = list(mongo.db.files.find().limit(10))
+	last_id = docs[-1]['_id']
+	curpage = int(request.args.get("curpage"))
+
+	if curpage > 1 and curpage<=page:
+		n = curpage
+		while n > 1:
+			docs = list(mongo.db.files.find({'_id'>last_id}).limit(10))
+			last_id = docs[-1]['_id']
+			n = n - 1
+
+	name_list = []
+	hash_list = []
+	for doc in list(docs):
+		name_list.append(doc['name'])
+		hash_list.append(doc['hash']['sha256'])
+
+	return render_template('explor.html',name = name_list, hash = hash_list, 
+		items = len(name_list),current_page=curpage)
+
+@app.route('/decrypted', methods = ['GET','POST'])
+def decrypted():
+	if request.method == 'GET':
+		file_hash = request.args.get('file_hash')
+
+		fn = mongo.db.files.find_one({'hash.sha256':file_hash},{'name':1})
+		ext = mongo.db.files.find_one({'hash.sha256':file_hash},{'extension':1})
+		des_file = str(file_hash) + '.enc'
+		des_path = os.path.join(app.config['ENCRYPT_FOLDER'],des_file)
+		
+		out_file = str(fn['name'])+'.'+str(ext['extension'])
+		out_path = out_path = os.path.join(app.config['DECRYPT_FOLDER'],out_file)
+		decrypt_file(key, des_path,out_path)
+
+		return send_from_directory(app.config['DECRYPT_FOLDER'],out_file, as_attachment=True)
+
+def encrypt_file(key,file_hash,size,path):
+	chunksize = 64*1024
+	out_file = str(file_hash) + '.enc'
+	iv = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
+	encryptor = AES.new(key,AES.MODE_CBC,iv)
+	filesize = size
+	out_path = os.path.join(app.config['ENCRYPT_FOLDER'],out_file)
+
+	with open(path,'rb') as infile:
+		with open(out_path,'wb') as outfile:
+			outfile.write(struct.pack('<Q',filesize))
+			outfile.write(iv)
+
+			while True:
+				chunk = infile.read(chunksize)
+				if len(chunk) == 0:
+					break
+				elif len(chunk) % 16 != 0:
+					chunk += ' ' * (16 - len(chunk)%16)
+				outfile.write(encryptor.encrypt(chunk))
+
+def decrypt_file(key,in_path,out_path):
+
+	chunksize=24*1024
+	#out_file = in_file+'dec'
+	#out_path = out_path = os.path.join(app.config['DECRYPT_FOLDER'],out_file)
+
+	with open(in_path,'rb') as infile:
+		origsize = struct.unpack('<Q', infile.read(struct.calcsize('Q')))[0]
+		iv = infile.read(16)
+		decryptor = AES.new(key,AES.MODE_CBC,iv)
+
+		with open(out_path,'wb') as outfile:
+			while True:
+				chunk = infile.read(chunksize)
+				if len(chunk) == 0:
+					break
+				outfile.write(decryptor.decrypt(chunk))
+			outfile.truncate(origsize)
 
 
 #return the hash value of file
@@ -110,46 +178,6 @@ def getHash(filepath):
 	hashvalue['md5'] = h5.hexdigest()
 	return hashvalue
 
-def encrypt_file(key, in_file, out_file=None, chunksize = 64*1024):
-	#get the sha256 value from mongodb to name outfile
-	fn = mongo.db.files.find({'name':in_file},{hash:1}).sha256
-
-	if not out_file:
-		out_file = fn + '.enc'
-
-	iv = ''.join(chr(random.randint(0,0xFF)) for i in range(16))
-	encryptor = AES.new(key,AES.MODE_CBC,iv)
-	filesize = os.path.getsize(in_file)
-
-	with open(in_file,'rb') as infile:
-		with open(out_file,'wb') as outfile:
-			outfile.write(struct.pack('<Q',filesize))
-			outfile.write(iv)
-
-			while True:
-				chunk = infile.read(chunksize)
-				if len(chunk) == 0:
-					break
-				elif len(chunk) % 16 != 0:
-					chunk += ' ' * (16 - len(chunk)%16)
-				outfile.write(encryptor.encrypt(chunk))
-	outfile.save(os.path.join(app.config['ENCRYPT_FOLDER'],out_file))
-
-def decrypt_file(key, in_file, out_file=None, chunksize=24*1024):
-	if not out_file:
-		out_file = in_file+'dec'
-	with open(in_file,'rb') as infile:
-		origsize = struct.unpack('<Q', infile.read(struct.calcsize('Q')))[0]
-		iv = infile.read(16)
-		decryptor = AES.new(key,AES.MODE_CBC,iv)
-
-		with open(out_file,'wb') as outfile:
-			while True:
-				chunk = infile.read(chunksize)
-				if len(chunk) == 0:
-					break
-				outfile.write(decryptor.decrypt(chunk))
-			outfile.truncate(origsize)
 
 if __name__ == '__main__':
 	app.run(debug = True)
