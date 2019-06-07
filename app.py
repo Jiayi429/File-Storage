@@ -62,9 +62,9 @@ def upload():
 				mongo.db.files.insert_one(s)
 				shutil.move(file_path,desDir)
 				encrypt_file(key,s['hash']['sha256'],filesize,desDir)
-	count = len(list(mongo.db.files.find()))
 
-	return render_template('upload.html', filenames = filenames, listlen = len(filenames),hashvals = res,count= count)
+	return render_template('upload.html', filenames = filenames, 
+		listlen = len(filenames),hashvals = res,current_page = 1)
 
 
 @app.route('/uploads/<filename>')
@@ -74,8 +74,16 @@ def uploaded_file(filename):
 @app.route('/explorer', methods = ['GET','POST'])
 
 def explor_files():
-	#while total_count > 10:
+	count = len(list(mongo.db.files.find()))
+	page = count//10 + 1 if count%10>0 else count//10
 	docs = mongo.db.files.find().limit(10)
+	last_id = docs[-1]['_id']
+	if curpage > 1 and curpage<=page:
+		n = curpage
+		while n > 1:
+			docs = mongo.db.files.find({'_id'>last_id}).limit(10)
+			last_id = docs[-1]['_id']
+			n = n - 1
 
 	name_list = []
 	hash_list = []
@@ -83,16 +91,15 @@ def explor_files():
 		name_list.append(doc['name'])
 		hash_list.append(doc['hash']['sha256'])
 
-	return render_template('explor.html',name = name_list, hash = hash_list, items = len(name_list))
+	return render_template('explor.html',name = name_list, hash = hash_list, 
+		items = len(name_list),current_page=curpage)
 
 @app.route('/decrypted', methods = ['GET','POST'])
 def decrypted():
 	if request.method == 'GET':
 		file_hash = request.args.get('file_hash')
 
-
 		fn = mongo.db.files.find_one({'sha256':file_hash},{'name':1})
-
 		ext = mongo.db.files.find_one({'sha256':file_hash},{'extension':1})
 		des_file = str(file_hash) + '.enc'
 		des_path = os.path.join(app.config['ENCRYPT_FOLDER'],des_file)

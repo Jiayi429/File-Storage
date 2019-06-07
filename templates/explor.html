@@ -26,9 +26,9 @@
 				</tr>
 			{% endfor %}
 			<tr>
-				<th align="center"><a href="{{url_for('decrypted',total_count = )}}">Previous</th>
+				<th align="center"><a href="{{url_for('explor_files',cur = current_page - 1 )}}">Previous</th>
 				<th align ="center">Current</th>
-				<th align="center">Next</th>
+				<th align="center"><a href="{{url_for('explor_files',cur = current_page + 1 )}}">Next</th>
 			</tr>
 		</table>
 	</div>

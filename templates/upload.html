@@ -27,7 +27,7 @@
 					{% endfor %}
 				</ul>
 			{% endif %}
-			<a href="{{url_for('explor_files', total_count = count)}}">{{"explore files"}}</a>
+			<a href="{{url_for('explor_files', total_count = count, total_page = page, curpage = current_page)}}">{{"explore files"}}</a>
 		</div>
 </body>
 </html>
