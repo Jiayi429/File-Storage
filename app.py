@@ -73,18 +73,23 @@ def uploaded_file(filename):
 	return send_from_directory(app.config['UPLOAD_FOLDER'],filename)
 
 @app.route('/explorer', methods = ['GET','POST'])
-
 def explor_files():
 	count = len(list(mongo.db.files.find()))
 	page = count//10 + 1 if count%10>0 else count//10
-	docs = list(mongo.db.files.find().limit(10))
-	last_id = docs[-1]['_id']
-	curpage = int(request.args.get("curpage"))
 
-	if curpage > 1 and curpage<=page:
-		n = curpage
+	docs = list(mongo.db.files.find().limit(10))
+	docs.sort()
+	last_id = docs[-1]['_id']
+	if request.args.get("curpage"):
+		curpage = int(request.args.get("curpage"))
+	else:
+		curpage = 1
+	n = curpage
+
+	if n > 1 and n<=page:
 		while n > 1:
-			docs = list(mongo.db.files.find({'_id'>last_id}).limit(10))
+			docs = list(mongo.db.files.find({'_id':{"$gte":last_id}}).limit(10))
+			docs.sort()
 			last_id = docs[-1]['_id']
 			n = n - 1
 
@@ -95,7 +100,7 @@ def explor_files():
 		hash_list.append(doc['hash']['sha256'])
 
 	return render_template('explor.html',name = name_list, hash = hash_list, 
-		items = len(name_list),current_page=curpage)
+		items = len(name_list),current_page=curpage,max_page = page)
 
 @app.route('/decrypted', methods = ['GET','POST'])
 def decrypted():
