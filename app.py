@@ -28,43 +28,44 @@ def index():
 
 @app.route('/upload', methods = ['GET','POST'])
 def upload():
-	uploaded_files = request.files.getlist("file[]")
+	if request.method == 'POST':
+		uploaded_files = request.files.getlist("file[]")
 
-	filenames = []
-	res = []
-	
-	for file in uploaded_files:
-		flag = 1
-		filename = secure_filename(file.filename)
-		file_path = os.path.join(os.path.dirname(__file__),"temp",filename)
-		desDir = os.path.join(app.config['UPLOAD_FOLDER'],filename)
-		if not os.path.exists(desDir):
-			file.save(file_path)
-			file_hash = getHash(file_path)
+		filenames = []
+		res = []
+		
+		for file in uploaded_files:
+			flag = 1
+			filename = secure_filename(file.filename)
+			file_path = os.path.join(os.path.dirname(__file__),"temp",filename)
+			desDir = os.path.join(app.config['UPLOAD_FOLDER'],filename)
+			if not os.path.exists(desDir):
+				file.save(file_path)
+				file_hash = getHash(file_path)
 
-			if mongo.db.files.find_one({'hash':file_hash}):
-				flag = 0
-				res.append(file_hash)
-				os.remove(file_path)
+				if mongo.db.files.find_one({'hash':file_hash}):
+					flag = 0
+					res.append(file_hash)
+					os.remove(file_path)
 
-			if flag:
-				filenames.append(filename)
-				s = {}
-				filesize = os.stat(file_path).st_size
-				s['hash'] = file_hash
-				s['name'] = os.path.splitext(filename)[0]
-				s['path'] = desDir
-				s['extension'] = os.path.splitext(filename)[1]
-				s['size'] = str(filesize)+" bytes"
-				s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
-				s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
+				if flag:
+					filenames.append(filename)
+					s = {}
+					filesize = os.stat(file_path).st_size
+					s['hash'] = file_hash
+					s['name'] = os.path.splitext(filename)[0]
+					s['path'] = desDir
+					s['extension'] = os.path.splitext(filename)[1]
+					s['size'] = str(filesize)+" bytes"
+					s['creatDate'] = time.ctime(os.path.getctime(file_path)) 
+					s['modifyDate'] = time.ctime(os.path.getmtime(file_path))
 
-				mongo.db.files.insert_one(s)
-				shutil.move(file_path,desDir)
-				encrypt_file(key,s['hash']['sha256'],filesize,desDir)
+					mongo.db.files.insert_one(s)
+					shutil.move(file_path,desDir)
+					encrypt_file(key,s['hash']['sha256'],filesize,desDir)
 
-	return render_template('upload.html', filenames = filenames, 
-		listlen = len(filenames),hashvals = res,current_page = 1)
+		return render_template('upload.html', filenames = filenames, 
+			listlen = len(filenames),hashvals = res,current_page = 1)
 
 
 @app.route('/uploads/<filename>')
@@ -76,12 +77,14 @@ def uploaded_file(filename):
 def explor_files():
 	count = len(list(mongo.db.files.find()))
 	page = count//10 + 1 if count%10>0 else count//10
-	docs = mongo.db.files.find().limit(10)
+	docs = list(mongo.db.files.find().limit(10))
 	last_id = docs[-1]['_id']
+	curpage = int(request.args.get("curpage"))
+
 	if curpage > 1 and curpage<=page:
 		n = curpage
 		while n > 1:
-			docs = mongo.db.files.find({'_id'>last_id}).limit(10)
+			docs = list(mongo.db.files.find({'_id'>last_id}).limit(10))
 			last_id = docs[-1]['_id']
 			n = n - 1
 
@@ -99,8 +102,8 @@ def decrypted():
 	if request.method == 'GET':
 		file_hash = request.args.get('file_hash')
 
-		fn = mongo.db.files.find_one({'sha256':file_hash},{'name':1})
-		ext = mongo.db.files.find_one({'sha256':file_hash},{'extension':1})
+		fn = mongo.db.files.find_one({'hash.sha256':file_hash},{'name':1})
+		ext = mongo.db.files.find_one({'hash.sha256':file_hash},{'extension':1})
 		des_file = str(file_hash) + '.enc'
 		des_path = os.path.join(app.config['ENCRYPT_FOLDER'],des_file)
 		
