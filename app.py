@@ -7,22 +7,19 @@ import shutil
 import filecmp
 
 from werkzeug.utils import secure_filename
-from flask import render_template, redirect, url_for, request, send_from_directory
-from Crypto.Cipher import AES
+from flask import Flask, render_template, redirect, url_for, request, send_from_directory
 from flask_pymongo import PyMongo
-from . import create_app
-"""
-from flask import Flask
+from Crypto.Cipher import AES
 from flask_cors import CORS
+
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__),"uploaded")
 app.config['ENCRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"encrypted")
 app.config['DECRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"decrypted")
+
 app.config['MONGO_URI'] = "mongodb://localhost:27017/filestorage"
 mongo = PyMongo(app)
 CORS(app)
-"""
-app = create_app()
 key = 'keyskeyskeyskeys'
 
 @app.route('/')
@@ -79,20 +76,15 @@ def uploaded_file(filename):
 def explor_files():
 	count = len(list(mongo.db.files.find()))
 	page = count//10 + 1 if count%10>0 else count//10
-
+	print(p)
 	docs = list(mongo.db.files.find().limit(10))
-	docs.sort()
 	last_id = docs[-1]['_id']
-	if request.args.get("curpage"):
-		curpage = int(request.args.get("curpage"))
-	else:
-		curpage = 1
-	n = curpage
+	curpage = int(request.args.get("curpage"))
 
-	if n > 1 and n<=page:
+	if curpage > 1 and curpage<=page:
+		n = curpage
 		while n > 1:
-			docs = list(mongo.db.files.find({'_id':{"$gte":last_id}}).limit(10))
-			docs.sort()
+			docs = list(mongo.db.files.find({'_id'>last_id}).limit(10))
 			last_id = docs[-1]['_id']
 			n = n - 1
 
@@ -103,7 +95,7 @@ def explor_files():
 		hash_list.append(doc['hash']['sha256'])
 
 	return render_template('explor.html',name = name_list, hash = hash_list, 
-		items = len(name_list),current_page=curpage,max_page = page)
+		items = len(name_list),current_page=curpage, max_page = page)
 
 @app.route('/decrypted', methods = ['GET','POST'])
 def decrypted():
