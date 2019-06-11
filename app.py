@@ -7,19 +7,22 @@ import shutil
 import filecmp
 
 from werkzeug.utils import secure_filename
-from flask import Flask, render_template, redirect, url_for, request, send_from_directory
-from flask_pymongo import PyMongo
+from flask import render_template, redirect, url_for, request, send_from_directory
 from Crypto.Cipher import AES
+from flask_pymongo import PyMongo
+from . import create_app
+"""
+from flask import Flask
 from flask_cors import CORS
-
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__),"uploaded")
 app.config['ENCRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"encrypted")
 app.config['DECRYPT_FOLDER'] = os.path.join(os.path.dirname(__file__),"decrypted")
-
 app.config['MONGO_URI'] = "mongodb://localhost:27017/filestorage"
 mongo = PyMongo(app)
 CORS(app)
+"""
+app = create_app()
 key = 'keyskeyskeyskeys'
 
 @app.route('/')
