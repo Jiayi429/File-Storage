@@ -7,7 +7,7 @@ contextlib2==0.5.5
 cryptography==3.2
 enum34==1.1.6
 Flask==1.0.3
-Flask-Cors==3.0.7
+Flask-Cors==3.0.9
 flask-mongoengine==0.9.5
 Flask-PyMongo==2.3.0
 Flask-WTF==0.14.2
